@@ -35,11 +35,14 @@ class SubmissionStorage:
             logs_dir=logs_dir,
             intake_json=raw_dir / "intake.json",
             demo_video=raw_dir / "demo.mp4",
+            app_icon=raw_dir / "app_icon.png",
             demo_walkthrough_voice=raw_dir / "demo_walkthrough.ogg",
             client_brief_json=derived_dir / "client_brief.json",
             demo_analysis_json=derived_dir / "demo_analysis.json",
             voiceover_plan_json=derived_dir / "voiceover_plan.json",
             scenario_concept_json=derived_dir / "scenario_concept.json",
+            end_card_banner_json=derived_dir / "end_card_banner.json",
+            end_card_banner_png=derived_dir / "end_card_banner.png",
             content_factory_bridge_json=derived_dir / "content_factory_bridge.json",
             scenario_prompt_txt=derived_dir / "scenario_prompt.txt",
             run_summary_json=derived_dir / "run_summary.json",
@@ -55,6 +58,11 @@ class SubmissionStorage:
         paths = self.paths_for(submission_id)
         shutil.copy2(source_path, paths.demo_video)
         return paths.demo_video
+
+    def save_uploaded_icon(self, submission_id: str, source_path: Path) -> Path:
+        paths = self.paths_for(submission_id)
+        shutil.copy2(source_path, paths.app_icon)
+        return paths.app_icon
 
     def write_json(self, path: Path, payload: dict) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)

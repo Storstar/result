@@ -3,9 +3,10 @@ from __future__ import annotations
 import traceback
 from typing import Optional
 
-from .models import ClientBrief, DemoAnalysis, RunSummary, VoiceoverPlan
+from .models import ClientBrief, DemoAnalysis, EndCardBanner, RunSummary, VoiceoverPlan
 from .pipeline.brief_normalizer import normalize_brief
 from .pipeline.demo_analyzer import analyze_demo_video
+from .pipeline.end_card_builder import build_end_card_banner
 from .pipeline.scenario_concept_builder import build_scenario_concept
 from .pipeline.scenario_prompt_builder import build_scenario_prompt
 from .pipeline.voiceover_planner import build_voiceover_plan
@@ -42,13 +43,20 @@ class SubmissionOrchestrator:
             scenario_concept = build_scenario_concept(client_brief, demo_analysis, voiceover_plan, scenario_prompt)
             self.storage.write_json(paths.scenario_concept_json, scenario_concept.model_dump(mode="json"))
 
+            icon_path = paths.app_icon if paths.app_icon.exists() else None
+            end_card_banner: EndCardBanner = build_end_card_banner(client_brief.app_name, icon_path, paths.end_card_banner_png)
+            self.storage.write_json(paths.end_card_banner_json, end_card_banner.model_dump(mode="json"))
+
             content_factory_bridge = {
                 "mode": "external_demo_video",
                 "concept_source": str(paths.scenario_concept_json),
                 "demo_video_source": str(paths.demo_video),
+                "end_card_banner_source": str(paths.end_card_banner_png),
+                "app_icon_source": str(paths.app_icon) if paths.app_icon.exists() else "",
                 "notes": [
                     "Use the user-supplied demo video instead of rendering demo.mp4 from the old internal demo renderer.",
                     "Keep the real demo video as the source of truth for the product section.",
+                    "Use the generated end card banner for the final app-name frame.",
                 ],
             }
             self.storage.write_json(paths.content_factory_bridge_json, content_factory_bridge)
@@ -72,6 +80,8 @@ class SubmissionOrchestrator:
                 "demo_analysis_json": str(paths.demo_analysis_json),
                 "voiceover_plan_json": str(paths.voiceover_plan_json),
                 "scenario_concept_json": str(paths.scenario_concept_json),
+                "end_card_banner_json": str(paths.end_card_banner_json),
+                "end_card_banner_png": str(paths.end_card_banner_png),
                 "content_factory_bridge_json": str(paths.content_factory_bridge_json),
                 "scenario_prompt_txt": str(paths.scenario_prompt_txt),
                 "result_bundle_zip": str(bundle_path),

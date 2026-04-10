@@ -33,10 +33,11 @@ from .storage import SubmissionStorage
     BLOCKED_ARCHETYPES,
     BLOCKED_CLAIMS,
     CTA,
+    APP_ICON,
     VIDEO,
     DEMO_WALKTHROUGH,
     EXTRA_PROJECT_CONTEXT,
-) = range(12)
+) = range(13)
 
 
 QUESTIONS = [
@@ -49,6 +50,7 @@ QUESTIONS = [
     "Какие герои или стили точно нельзя использовать?",
     "Есть ли запрещенные claims, формулировки или юридические ограничения?",
     "Какое действие нужно предложить зрителю в конце рекламы? Например: скачать приложение, попробовать бесплатно, зайти на сайт.",
+    "Опционально: пришлите иконку приложения как image или file. Ее можно использовать в финальном баннере с названием приложения. Если пока без иконки, отправьте `skip`.",
     "Пришлите demo screen recording как video или file.",
     "Опционально: если хотите, одним сообщением или voice note опишите, что происходит в demo и что вы нажимаете. Если в самом видео уже есть понятная озвучка или комментарий, можно отправить `skip`.",
     "Последнее: добавьте любую важную информацию о проекте, приложении, позиционировании, ограничениях, ссылках или нюансах. Если нечего добавить, отправьте `skip`.",
@@ -65,6 +67,7 @@ ANSWER_KEYS = [
     "blocked_archetypes",
     "blocked_claims",
     "cta",
+    "app_icon_note",
     "video",
     "demo_walkthrough",
     "extra_project_context",
@@ -135,7 +138,7 @@ async def _download_voice_note(update: Update, file_stem: str) -> Optional[Path]
 
 async def handle_voice_step(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     state = context.user_data.get("state", APP_NAME)
-    if state in {VIDEO, DEMO_WALKTHROUGH}:
+    if state in {APP_ICON, VIDEO, DEMO_WALKTHROUGH}:
         await update.message.reply_text("На этом шаге нужен другой тип ответа. Следуйте подсказке бота.")
         return state
 
@@ -183,6 +186,36 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         return VIDEO
     context.user_data["state"] = DEMO_WALKTHROUGH
     return DEMO_WALKTHROUGH
+
+
+async def handle_app_icon_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    answer = update.message.text.strip()
+    context.user_data["app_icon_note"] = "" if answer.lower() == "skip" else answer
+    return await advance_to_next_state(update, context, APP_ICON)
+
+
+async def handle_app_icon_upload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    file_obj = None
+    file_name = "app_icon.png"
+    if update.message.photo:
+        file_obj = update.message.photo[-1]
+    elif update.message.document and update.message.document.mime_type and update.message.document.mime_type.startswith("image/"):
+        file_obj = update.message.document
+        file_name = update.message.document.file_name or file_name
+
+    if file_obj is None:
+        await update.message.reply_text("На этом шаге нужна картинка, image file, или `skip`.")
+        return APP_ICON
+
+    telegram_file = await file_obj.get_file()
+    temp_dir = Path(tempfile.mkdtemp(prefix="factorycontent_icon_"))
+    temp_path = temp_dir / file_name
+    await telegram_file.download_to_drive(custom_path=str(temp_path))
+
+    context.user_data["icon_temp_path"] = str(temp_path)
+    context.user_data["icon_file_name"] = file_name
+    context.user_data["app_icon_note"] = "icon_uploaded"
+    return await advance_to_next_state(update, context, APP_ICON)
 
 
 async def handle_demo_walkthrough_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -233,6 +266,7 @@ async def finalize_submission(update: Update, context: ContextTypes.DEFAULT_TYPE
         blocked_archetypes=context.user_data.get("blocked_archetypes", ""),
         blocked_claims=context.user_data.get("blocked_claims", ""),
         cta=context.user_data.get("cta", ""),
+        app_icon_note=context.user_data.get("app_icon_note", ""),
         demo_walkthrough=context.user_data.get("demo_walkthrough", ""),
         extra_project_context=context.user_data.get("extra_project_context", ""),
     )
@@ -242,9 +276,13 @@ async def finalize_submission(update: Update, context: ContextTypes.DEFAULT_TYPE
         telegram_username=user.username if user else None,
         telegram_chat_id=chat.id if chat else None,
         uploaded_video_name=context.user_data.get("video_file_name", "demo.mp4"),
+        uploaded_icon_name=context.user_data.get("icon_file_name", ""),
     )
     record = IntakeRecord(metadata=metadata, answers=answers)
     paths = storage.save_intake(submission_id, record)
+    icon_temp_path = context.user_data.get("icon_temp_path")
+    if icon_temp_path:
+        storage.save_uploaded_icon(submission_id, Path(icon_temp_path))
     video_temp_path = Path(context.user_data["video_temp_path"])
     storage.save_uploaded_video(submission_id, video_temp_path)
     walkthrough_voice_path = context.user_data.get("demo_walkthrough_voice_path")
@@ -337,6 +375,10 @@ def build_application() -> Application:
             CTA: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_step),
                 MessageHandler(filters.VOICE, handle_voice_step),
+            ],
+            APP_ICON: [
+                MessageHandler(filters.PHOTO | filters.Document.IMAGE, handle_app_icon_upload),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_app_icon_text),
             ],
             VIDEO: [MessageHandler(filters.VIDEO | filters.Document.VIDEO, handle_video)],
             DEMO_WALKTHROUGH: [

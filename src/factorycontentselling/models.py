@@ -21,6 +21,7 @@ class IntakeAnswers(BaseModel):
     blocked_archetypes: str = ""
     blocked_claims: str = ""
     cta: str = ""
+    app_icon_note: str = ""
     demo_walkthrough: str = ""
     extra_project_context: str = ""
 
@@ -33,6 +34,7 @@ class SubmissionMetadata(BaseModel):
     telegram_username: Optional[str] = None
     telegram_chat_id: Optional[int] = None
     uploaded_video_name: str = "demo.mp4"
+    uploaded_icon_name: str = ""
     status: str = "received"
 
 
@@ -109,8 +111,11 @@ class ScenarioConcept(BaseModel):
     app_name: str
     creative_language: str
     concept_title: str
+    character_description: str
+    environment_description: str
     hook_text: str
     hook_type: str
+    post_hook_voiceover: str
     creator_archetype: str
     persona_summary: str
     scenario: str
@@ -125,6 +130,15 @@ class ScenarioConcept(BaseModel):
     blocked_claims: list[str]
     blocked_archetypes: list[str]
     confidence_notes: list[str]
+
+
+class EndCardBanner(BaseModel):
+    app_name: str
+    background_color: str
+    text_color: str
+    icon_source: str
+    output_image: str
+    layout_notes: list[str]
 
 
 class RunSummary(BaseModel):
@@ -143,11 +157,14 @@ class SubmissionPaths(BaseModel):
     logs_dir: Path
     intake_json: Path
     demo_video: Path
+    app_icon: Path
     demo_walkthrough_voice: Path
     client_brief_json: Path
     demo_analysis_json: Path
     voiceover_plan_json: Path
     scenario_concept_json: Path
+    end_card_banner_json: Path
+    end_card_banner_png: Path
     content_factory_bridge_json: Path
     scenario_prompt_txt: Path
     run_summary_json: Path

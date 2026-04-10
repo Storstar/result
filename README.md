@@ -10,6 +10,7 @@ Backend-first MVP, который принимает intake через Telegram,
 - делает прагматичный анализ demo-видео в `demo_analysis.json`
 - строит `voiceover_plan.json`
 - строит `scenario_concept.json`
+- собирает `end_card_banner.png`
 - собирает `scenario_prompt.txt`
 - сохраняет `run_summary.json` и debug-артефакты
 
@@ -46,6 +47,8 @@ submissions/<id>/
     demo_analysis.json
     voiceover_plan.json
     scenario_concept.json
+    end_card_banner.json
+    end_card_banner.png
     content_factory_bridge.json
     scenario_prompt.txt
     run_summary.json
@@ -111,6 +114,7 @@ PYTHONPATH=src python -m factorycontentselling.cli run-bot
 - открыть бота
 - отправить `/start`
 - ответить на вопросы по одному
+- при желании загрузить иконку приложения
 - загрузить demo screen recording
 - при желании прислать ссылку или `skip`
 
@@ -225,8 +229,15 @@ factorycontent cleanup-submissions --days 3
 ### `scenario_concept.json`
 
 - структурированный ad concept для следующего сценарного stage
-- hook, archetype, persona, opener, demo VO outline, full demo VO, CTA
+- character, environment, hook, post-hook VO, persona, demo VO outline, full demo VO, CTA
 - собирается из `scenario_prompt.txt` + brief + demo analysis + voiceover plan
+
+### `end_card_banner.json` и `end_card_banner.png`
+
+- финальный end-card banner для app name кадра
+- однотонный фон
+- иконка приложения по центру, если пользователь ее прислал
+- имя приложения под иконкой
 
 ### `content_factory_bridge.json`
 
