@@ -339,6 +339,7 @@ def build_application() -> Application:
     application = Application.builder().token(settings.telegram_bot_token).build()
     conversation = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
+        allow_reentry=True,
         states={
             APP_NAME: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_step),
