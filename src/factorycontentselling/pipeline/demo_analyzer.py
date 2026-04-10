@@ -133,9 +133,13 @@ def _analyze_demo_video_heuristic(video_path: Path, artifacts_dir: Path, client_
     if metadata.has_audio:
         audio_path = video_service.extract_audio(video_path, artifacts_dir / "audio" / "demo_audio.mp3")
         if audio_path is not None:
-            transcript = openai_adapter.transcribe_audio(audio_path)
-            if not transcript:
-                uncertainties.append("Audio exists but transcription is unavailable or failed.")
+            try:
+                transcript = openai_adapter.transcribe_audio(audio_path)
+                if not transcript:
+                    uncertainties.append("Audio exists but transcription is unavailable or failed.")
+            except Exception as exc:
+                uncertainties.append(f"Audio transcription failed: {exc}")
+                confidence_notes.append("Transcript step failed, continuing with visual-only analysis.")
         else:
             uncertainties.append("Audio extraction failed.")
     else:
@@ -196,15 +200,20 @@ def _analyze_demo_video_heuristic(video_path: Path, artifacts_dir: Path, client_
         for step in detected_steps
     ]
 
-    frame_summary = openai_adapter.summarize_frames(
-        [frame_path for _, frame_path in sampled_frames],
-        {
-            "app_name": client_brief.app_name,
-            "product_summary": client_brief.product_summary,
-            "target_audience": client_brief.target_audience,
-            "core_pain": client_brief.core_pain,
-        },
-    )
+    try:
+        frame_summary = openai_adapter.summarize_frames(
+            [frame_path for _, frame_path in sampled_frames],
+            {
+                "app_name": client_brief.app_name,
+                "product_summary": client_brief.product_summary,
+                "target_audience": client_brief.target_audience,
+                "core_pain": client_brief.core_pain,
+            },
+        )
+    except Exception as exc:
+        frame_summary = None
+        uncertainties.append(f"Frame summary failed: {exc}")
+        confidence_notes.append("OpenAI frame summary failed, continuing with heuristic frame analysis only.")
 
     summary_parts = [
         f"Demo for {client_brief.app_name} sampled across {len(sampled_frames)} frames.",
