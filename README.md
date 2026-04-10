@@ -76,6 +76,7 @@ cp .env.example .env
 
 ```env
 TELEGRAM_BOT_TOKEN=...
+SUBMISSION_RETENTION_DAYS=7
 ```
 
 Опционально для richer analysis:
@@ -85,6 +86,8 @@ OPENAI_API_KEY=...
 OPENAI_VISION_MODEL=gpt-4.1-mini
 OPENAI_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
 ```
+
+`SUBMISSION_RETENTION_DAYS` управляет автоудалением старых заявок с диска. По умолчанию это `7` дней.
 
 ### 2. Запустить Telegram bot
 
@@ -127,6 +130,31 @@ Fallback без package install:
 
 ```bash
 PYTHONPATH=src python -m factorycontentselling.cli run-pipeline --submission-id <submission-id>
+```
+
+## Очистка старых файлов
+
+Старые папки в `submissions/` теперь удаляются автоматически по возрасту:
+
+- при старте бота
+- после завершения каждой новой заявки
+
+По умолчанию хранятся `7` дней. Это настраивается через:
+
+```env
+SUBMISSION_RETENTION_DAYS=7
+```
+
+Если хочется прогнать очистку руками:
+
+```bash
+factorycontent cleanup-submissions
+```
+
+Или с явным окном хранения:
+
+```bash
+factorycontent cleanup-submissions --days 3
 ```
 
 ## Вынести в интернет

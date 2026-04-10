@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 from uuid import uuid4
@@ -13,6 +14,7 @@ from .models import IntakeRecord, SubmissionPaths
 class SubmissionStorage:
     def __init__(self, base_dir: Optional[Path] = None) -> None:
         settings = get_settings()
+        self.settings = settings
         self.base_dir = (base_dir or settings.submissions_dir).resolve()
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
@@ -39,6 +41,7 @@ class SubmissionStorage:
             voiceover_plan_json=derived_dir / "voiceover_plan.json",
             scenario_prompt_txt=derived_dir / "scenario_prompt.txt",
             run_summary_json=derived_dir / "run_summary.json",
+            result_bundle_zip=root / "result_bundle.zip",
         )
 
     def save_intake(self, submission_id: str, record: IntakeRecord) -> SubmissionPaths:
@@ -58,3 +61,26 @@ class SubmissionStorage:
     def write_text(self, path: Path, content: str) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
+
+    def build_result_bundle(self, submission_id: str) -> Path:
+        paths = self.paths_for(submission_id)
+        archive_base = paths.result_bundle_zip.with_suffix("")
+        archive_path = shutil.make_archive(str(archive_base), "zip", root_dir=paths.root, base_dir=".")
+        return Path(archive_path)
+
+    def cleanup_old_submissions(self, retention_days: Optional[int] = None) -> list[Path]:
+        days = self.settings.submission_retention_days if retention_days is None else retention_days
+        if days < 0:
+            return []
+
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        deleted: list[Path] = []
+        for submission_dir in self.base_dir.iterdir():
+            if not submission_dir.is_dir():
+                continue
+            last_modified = datetime.fromtimestamp(submission_dir.stat().st_mtime, tz=timezone.utc)
+            if last_modified >= cutoff:
+                continue
+            shutil.rmtree(submission_dir, ignore_errors=True)
+            deleted.append(submission_dir)
+        return deleted

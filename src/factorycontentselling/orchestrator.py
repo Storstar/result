@@ -37,6 +37,7 @@ class SubmissionOrchestrator:
 
             scenario_prompt = build_scenario_prompt(client_brief, demo_analysis, voiceover_plan)
             self.storage.write_text(paths.scenario_prompt_txt, scenario_prompt)
+            bundle_path = self.storage.build_result_bundle(submission_id)
 
             status = "completed"
         except Exception as exc:
@@ -44,6 +45,7 @@ class SubmissionOrchestrator:
             errors.append(str(exc))
             traceback_path = paths.logs_dir / "pipeline_error.log"
             traceback_path.write_text(traceback.format_exc(), encoding="utf-8")
+            bundle_path = self.storage.build_result_bundle(submission_id)
 
         run_summary = RunSummary(
             submission_id=submission_id,
@@ -55,6 +57,7 @@ class SubmissionOrchestrator:
                 "demo_analysis_json": str(paths.demo_analysis_json),
                 "voiceover_plan_json": str(paths.voiceover_plan_json),
                 "scenario_prompt_txt": str(paths.scenario_prompt_txt),
+                "result_bundle_zip": str(bundle_path),
             },
             warnings=sorted(set(warnings)),
             errors=errors,

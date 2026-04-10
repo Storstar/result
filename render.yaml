@@ -19,3 +19,5 @@ services:
         value: "1.5"
       - key: MAX_ANALYSIS_FRAMES
         value: "12"
+      - key: SUBMISSION_RETENTION_DAYS
+        value: "7"

@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     submissions_dir: Path = Field(default=Path("submissions"), alias="SUBMISSIONS_DIR")
     frame_sample_seconds: float = Field(default=1.5, alias="FRAME_SAMPLE_SECONDS")
     max_analysis_frames: int = Field(default=12, alias="MAX_ANALYSIS_FRAMES")
+    submission_retention_days: int = Field(default=7, alias="SUBMISSION_RETENTION_DAYS")
 
 
 @lru_cache(maxsize=1)

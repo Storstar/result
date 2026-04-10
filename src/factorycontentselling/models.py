@@ -127,3 +127,4 @@ class SubmissionPaths(BaseModel):
     voiceover_plan_json: Path
     scenario_prompt_txt: Path
     run_summary_json: Path
+    result_bundle_zip: Path

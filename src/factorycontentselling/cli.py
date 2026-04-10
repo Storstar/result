@@ -14,6 +14,9 @@ def build_parser() -> argparse.ArgumentParser:
     pipeline_parser = subparsers.add_parser("run-pipeline", help="Run the pipeline for an existing submission")
     pipeline_parser.add_argument("--submission-id", required=True, help="Existing submission id under submissions/")
 
+    cleanup_parser = subparsers.add_parser("cleanup-submissions", help="Delete old submissions from disk")
+    cleanup_parser.add_argument("--days", type=int, default=None, help="Override retention window in days")
+
     return parser
 
 
@@ -45,6 +48,16 @@ def main(argv: Optional[list[str]] = None) -> int:
             for error in result.errors:
                 print(f"- {error}")
             return 1
+        return 0
+
+    if args.command == "cleanup-submissions":
+        from .storage import SubmissionStorage
+
+        storage = SubmissionStorage()
+        deleted = storage.cleanup_old_submissions(retention_days=args.days)
+        print(f"deleted_count={len(deleted)}")
+        for path in deleted:
+            print(path)
         return 0
 
     return 1

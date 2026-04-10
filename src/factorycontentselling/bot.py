@@ -74,10 +74,13 @@ ANSWER_KEYS = [
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data.clear()
     context.user_data["state"] = APP_NAME
-    await update.message.reply_text(
+    sent = await _reply_with_retry(
+        update,
         "Соберем заявку для demo-to-creative MVP. Можно отвечать текстом, а часть шагов и голосом. В конце я запущу обработку."
     )
-    await update.message.reply_text(QUESTIONS[0])
+    if not sent:
+        return APP_NAME
+    await _reply_with_retry(update, QUESTIONS[0])
     return APP_NAME
 
 
@@ -248,25 +251,43 @@ async def finalize_submission(update: Update, context: ContextTypes.DEFAULT_TYPE
     if walkthrough_voice_path:
         paths.demo_walkthrough_voice.write_bytes(Path(walkthrough_voice_path).read_bytes())
 
-    await update.message.reply_text(
-        f"Заявка {submission_id} сохранена. Запускаю pipeline и соберу артефакты на диск.",
+    await _reply_with_retry(
+        update,
+        (
+            f"Заявка {submission_id} сохранена.\n"
+            "Начинаю обработку. Ожидайте примерно 5 минут."
+        ),
     )
 
     orchestrator = SubmissionOrchestrator(storage=storage)
     run_summary = await asyncio.to_thread(orchestrator.run, submission_id)
 
-    created_files = "\n".join(f"- `{path}`" for path in run_summary.artifacts.values())
-    warnings = "\n".join(f"- {warning}" for warning in run_summary.warnings[:8]) or "- none"
-    errors = "\n".join(f"- {error}" for error in run_summary.errors) or "- none"
-    await update.message.reply_text(
-        (
-            f"Submission: {submission_id}\n"
-            f"Status: {run_summary.status}\n"
-            f"Created files:\n{created_files}\n\n"
-            f"Warnings:\n{warnings}\n\n"
-            f"Errors:\n{errors}"
-        ),
-    )
+    warning_count = len(run_summary.warnings)
+    if run_summary.status == "completed":
+        summary_text = (
+            f"Готово. Заявка {submission_id} обработана.\n"
+            f"Собрал пакет файлов и отправляю его сюда.\n"
+            f"Warnings: {warning_count}"
+        )
+    else:
+        error_text = run_summary.errors[0] if run_summary.errors else "unknown error"
+        summary_text = (
+            f"Заявка {submission_id} обработалась с ошибкой.\n"
+            f"Что успел, я все равно собрал в архив.\n"
+            f"Ошибка: {error_text}"
+        )
+    await _reply_with_retry(update, summary_text)
+
+    bundle_path = run_summary.artifacts.get("result_bundle_zip")
+    if bundle_path:
+        with Path(bundle_path).open("rb") as bundle_file:
+            await update.message.reply_document(
+                document=bundle_file,
+                filename=f"{submission_id}-result-bundle.zip",
+                caption="Внутри raw intake, derived artifacts и logs.",
+            )
+
+    await asyncio.to_thread(storage.cleanup_old_submissions)
 
     context.user_data.clear()
     return ConversationHandler.END
@@ -335,5 +356,6 @@ def build_application() -> Application:
 
 
 def run_bot() -> None:
+    SubmissionStorage().cleanup_old_submissions()
     application = build_application()
     application.run_polling(drop_pending_updates=True)
