@@ -1,0 +1,21 @@
+services:
+  - type: worker
+    name: factorycontent-bot
+    runtime: docker
+    plan: starter
+    autoDeploy: true
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_VISION_MODEL
+        value: gpt-4.1-mini
+      - key: OPENAI_TRANSCRIPTION_MODEL
+        value: gpt-4o-mini-transcribe
+      - key: SUBMISSIONS_DIR
+        value: /app/submissions
+      - key: FRAME_SAMPLE_SECONDS
+        value: "1.5"
+      - key: MAX_ANALYSIS_FRAMES
+        value: "12"

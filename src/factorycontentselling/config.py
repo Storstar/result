@@ -1,0 +1,23 @@
+from functools import lru_cache
+from pathlib import Path
+from typing import Optional
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    telegram_bot_token: Optional[str] = Field(default=None, alias="TELEGRAM_BOT_TOKEN")
+    openai_api_key: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")
+    openai_vision_model: str = Field(default="gpt-4.1-mini", alias="OPENAI_VISION_MODEL")
+    openai_transcription_model: str = Field(default="gpt-4o-mini-transcribe", alias="OPENAI_TRANSCRIPTION_MODEL")
+    submissions_dir: Path = Field(default=Path("submissions"), alias="SUBMISSIONS_DIR")
+    frame_sample_seconds: float = Field(default=1.5, alias="FRAME_SAMPLE_SECONDS")
+    max_analysis_frames: int = Field(default=12, alias="MAX_ANALYSIS_FRAMES")
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    return Settings()
