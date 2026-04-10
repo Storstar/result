@@ -79,3 +79,94 @@ class OpenAIAdapter:
             return json.loads(text)
         except json.JSONDecodeError:
             return None
+
+    def generate_scenario_concept(
+        self,
+        *,
+        client_brief: Any,
+        demo_analysis: Any,
+        voiceover_plan: Any,
+        scenario_prompt: str,
+    ) -> Optional[dict[str, Any]]:
+        if not self.enabled or self._client is None:
+            return None
+
+        response = self._client.responses.create(
+            model=self.vision_model,
+            input=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": (
+                                "Build one structured scenario concept for a short-form app ad pipeline. "
+                                "The concept must stay grounded in the provided app brief, demo analysis, and voiceover plan. "
+                                "Do not invent product capabilities that are not supported by the prompt.\n\n"
+                                f"Scenario prompt:\n{scenario_prompt}\n\n"
+                                f"Client brief: {json.dumps(client_brief.model_dump(mode='json'), ensure_ascii=False)}\n\n"
+                                f"Demo analysis: {json.dumps(demo_analysis.model_dump(mode='json'), ensure_ascii=False)}\n\n"
+                                f"Voiceover plan: {json.dumps(voiceover_plan.model_dump(mode='json'), ensure_ascii=False)}"
+                            ),
+                        }
+                    ],
+                }
+            ],
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": "scenario_concept",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "app_name": {"type": "string"},
+                            "creative_language": {"type": "string"},
+                            "concept_title": {"type": "string"},
+                            "hook_text": {"type": "string"},
+                            "hook_type": {"type": "string", "enum": ["pain", "curiosity", "flex", "mistake", "speed", "replacement"]},
+                            "creator_archetype": {"type": "string"},
+                            "persona_summary": {"type": "string"},
+                            "scenario": {"type": "string"},
+                            "problem_frame": {"type": "string"},
+                            "payoff": {"type": "string"},
+                            "voice_style": {"type": "string"},
+                            "ugc_opener": {"type": "string"},
+                            "demo_voiceover_outline": {"type": "array", "items": {"type": "string"}, "minItems": 3, "maxItems": 4},
+                            "demo_voiceover_full_text": {"type": "string"},
+                            "cta_text": {"type": "string"},
+                            "visual_notes": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 6},
+                            "blocked_claims": {"type": "array", "items": {"type": "string"}},
+                            "blocked_archetypes": {"type": "array", "items": {"type": "string"}},
+                            "confidence_notes": {"type": "array", "items": {"type": "string"}},
+                        },
+                        "required": [
+                            "app_name",
+                            "creative_language",
+                            "concept_title",
+                            "hook_text",
+                            "hook_type",
+                            "creator_archetype",
+                            "persona_summary",
+                            "scenario",
+                            "problem_frame",
+                            "payoff",
+                            "voice_style",
+                            "ugc_opener",
+                            "demo_voiceover_outline",
+                            "demo_voiceover_full_text",
+                            "cta_text",
+                            "visual_notes",
+                            "blocked_claims",
+                            "blocked_archetypes",
+                            "confidence_notes",
+                        ],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+        )
+        text = response.output_text
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            return None

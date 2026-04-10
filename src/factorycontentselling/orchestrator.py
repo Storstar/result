@@ -6,6 +6,7 @@ from typing import Optional
 from .models import ClientBrief, DemoAnalysis, RunSummary, VoiceoverPlan
 from .pipeline.brief_normalizer import normalize_brief
 from .pipeline.demo_analyzer import analyze_demo_video
+from .pipeline.scenario_concept_builder import build_scenario_concept
 from .pipeline.scenario_prompt_builder import build_scenario_prompt
 from .pipeline.voiceover_planner import build_voiceover_plan
 from .storage import SubmissionStorage
@@ -37,6 +38,20 @@ class SubmissionOrchestrator:
 
             scenario_prompt = build_scenario_prompt(client_brief, demo_analysis, voiceover_plan)
             self.storage.write_text(paths.scenario_prompt_txt, scenario_prompt)
+
+            scenario_concept = build_scenario_concept(client_brief, demo_analysis, voiceover_plan, scenario_prompt)
+            self.storage.write_json(paths.scenario_concept_json, scenario_concept.model_dump(mode="json"))
+
+            content_factory_bridge = {
+                "mode": "external_demo_video",
+                "concept_source": str(paths.scenario_concept_json),
+                "demo_video_source": str(paths.demo_video),
+                "notes": [
+                    "Use the user-supplied demo video instead of rendering demo.mp4 from the old internal demo renderer.",
+                    "Keep the real demo video as the source of truth for the product section.",
+                ],
+            }
+            self.storage.write_json(paths.content_factory_bridge_json, content_factory_bridge)
             bundle_path = self.storage.build_result_bundle(submission_id)
 
             status = "completed"
@@ -56,6 +71,8 @@ class SubmissionOrchestrator:
                 "client_brief_json": str(paths.client_brief_json),
                 "demo_analysis_json": str(paths.demo_analysis_json),
                 "voiceover_plan_json": str(paths.voiceover_plan_json),
+                "scenario_concept_json": str(paths.scenario_concept_json),
+                "content_factory_bridge_json": str(paths.content_factory_bridge_json),
                 "scenario_prompt_txt": str(paths.scenario_prompt_txt),
                 "result_bundle_zip": str(bundle_path),
             },

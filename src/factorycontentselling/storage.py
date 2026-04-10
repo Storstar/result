@@ -39,6 +39,8 @@ class SubmissionStorage:
             client_brief_json=derived_dir / "client_brief.json",
             demo_analysis_json=derived_dir / "demo_analysis.json",
             voiceover_plan_json=derived_dir / "voiceover_plan.json",
+            scenario_concept_json=derived_dir / "scenario_concept.json",
+            content_factory_bridge_json=derived_dir / "content_factory_bridge.json",
             scenario_prompt_txt=derived_dir / "scenario_prompt.txt",
             run_summary_json=derived_dir / "run_summary.json",
             result_bundle_zip=root / "result_bundle.zip",

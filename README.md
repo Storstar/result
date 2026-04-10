@@ -9,6 +9,7 @@ Backend-first MVP, который принимает intake через Telegram,
 - нормализует бриф в `client_brief.json`
 - делает прагматичный анализ demo-видео в `demo_analysis.json`
 - строит `voiceover_plan.json`
+- строит `scenario_concept.json`
 - собирает `scenario_prompt.txt`
 - сохраняет `run_summary.json` и debug-артефакты
 
@@ -44,6 +45,8 @@ submissions/<id>/
     client_brief.json
     demo_analysis.json
     voiceover_plan.json
+    scenario_concept.json
+    content_factory_bridge.json
     scenario_prompt.txt
     run_summary.json
   logs/
@@ -218,6 +221,18 @@ factorycontent cleanup-submissions --days 3
 - `voice_style`
 - сегменты по таймкодам
 - draft lines, которые можно дальше переписывать
+
+### `scenario_concept.json`
+
+- структурированный ad concept для следующего сценарного stage
+- hook, archetype, persona, opener, demo VO outline, full demo VO, CTA
+- собирается из `scenario_prompt.txt` + brief + demo analysis + voiceover plan
+
+### `content_factory_bridge.json`
+
+- bridge-метаданные для следующего этапа content-factory
+- явно фиксирует, что demo берется из пользовательского видео
+- хранит путь к `scenario_concept.json` и исходному `demo.mp4`
 
 ### `scenario_prompt.txt`
 

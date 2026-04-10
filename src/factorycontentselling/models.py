@@ -105,6 +105,28 @@ class VoiceoverPlan(BaseModel):
     warnings: list[str]
 
 
+class ScenarioConcept(BaseModel):
+    app_name: str
+    creative_language: str
+    concept_title: str
+    hook_text: str
+    hook_type: str
+    creator_archetype: str
+    persona_summary: str
+    scenario: str
+    problem_frame: str
+    payoff: str
+    voice_style: str
+    ugc_opener: str
+    demo_voiceover_outline: list[str]
+    demo_voiceover_full_text: str
+    cta_text: str
+    visual_notes: list[str]
+    blocked_claims: list[str]
+    blocked_archetypes: list[str]
+    confidence_notes: list[str]
+
+
 class RunSummary(BaseModel):
     submission_id: str
     status: str
@@ -125,6 +147,8 @@ class SubmissionPaths(BaseModel):
     client_brief_json: Path
     demo_analysis_json: Path
     voiceover_plan_json: Path
+    scenario_concept_json: Path
+    content_factory_bridge_json: Path
     scenario_prompt_txt: Path
     run_summary_json: Path
     result_bundle_zip: Path
