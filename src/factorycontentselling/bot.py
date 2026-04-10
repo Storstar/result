@@ -75,7 +75,7 @@ ANSWER_KEYS = [
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    context.user_data.clear()
+    await _reset_conversation_state(context)
     context.user_data["state"] = APP_NAME
     sent = await _reply_with_retry(
         update,
@@ -88,9 +88,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    context.user_data.clear()
+    await _reset_conversation_state(context)
     await update.message.reply_text("Интейк остановлен. Можно начать заново командой /start.")
     return ConversationHandler.END
+
+
+async def _reset_conversation_state(context: ContextTypes.DEFAULT_TYPE) -> None:
+    background_tasks = context.user_data.get("background_tasks", [])
+    for task in background_tasks:
+        if isinstance(task, asyncio.Task) and not task.done():
+            task.cancel()
+    if background_tasks:
+        await asyncio.gather(*background_tasks, return_exceptions=True)
+    context.user_data.clear()
 
 
 async def _reply_with_retry(update: Update, text: str, attempts: int = 3) -> bool:
