@@ -16,6 +16,9 @@ class OpenAIAdapter:
         self.enabled = bool(settings.openai_api_key)
         self.vision_model = settings.openai_vision_model
         self.transcription_model = settings.openai_transcription_model
+        self.image_model = settings.openai_image_model
+        self.speech_model = settings.openai_speech_model
+        self.speech_voice = settings.openai_speech_voice
         self._client = OpenAI(api_key=settings.openai_api_key) if self.enabled else None
 
     def transcribe_audio(self, audio_path: Path) -> str:
@@ -27,6 +30,37 @@ class OpenAIAdapter:
                 file=audio_file,
             )
         return getattr(transcript, "text", "") or ""
+
+    def generate_image(self, prompt: str, output_path: Path) -> Optional[Path]:
+        if not self.enabled or self._client is None:
+            return None
+        response = self._client.images.generate(
+            model=self.image_model,
+            prompt=prompt,
+            size="1024x1536",
+            quality="medium",
+            output_format="png",
+        )
+        image_data = getattr(response.data[0], "b64_json", None) if getattr(response, "data", None) else None
+        if not image_data:
+            return None
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_bytes(base64.b64decode(image_data))
+        return output_path
+
+    def synthesize_speech(self, text: str, output_path: Path, *, instructions: str = "") -> Optional[Path]:
+        if not self.enabled or self._client is None or not text.strip():
+            return None
+        response = self._client.audio.speech.create(
+            model=self.speech_model,
+            voice=self.speech_voice,
+            input=text,
+            instructions=instructions or "Natural creator ad voice.",
+            response_format="mp3",
+        )
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_bytes(response.read())
+        return output_path
 
     def summarize_frames(self, frame_paths: list[Path], context: dict[str, Any]) -> Optional[dict[str, Any]]:
         if not self.enabled or self._client is None or not frame_paths:

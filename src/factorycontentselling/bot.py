@@ -20,6 +20,7 @@ from .config import get_settings
 from .models import IntakeAnswers, IntakeRecord, SubmissionMetadata
 from .orchestrator import SubmissionOrchestrator
 from .services.openai_adapter import OpenAIAdapter
+from .services.video import VideoService
 from .storage import SubmissionStorage
 
 
@@ -51,7 +52,7 @@ QUESTIONS = [
     "Есть ли запрещенные claims, формулировки или юридические ограничения?",
     "Какое действие нужно предложить зрителю в конце рекламы? Например: скачать приложение, попробовать бесплатно, зайти на сайт.",
     "Опционально: пришлите иконку приложения как image или file. Ее можно использовать в финальном баннере с названием приложения. Если пока без иконки, отправьте `skip`.",
-    "Пришлите demo screen recording как video или file.",
+    "Пришлите demo screen recording как video или file. Лимит для MVP: до 20 секунд.",
     "Опционально: если хотите, одним сообщением или voice note опишите, что происходит в demo и что вы нажимаете. Если в самом видео уже есть понятная озвучка или комментарий, можно отправить `skip`.",
     "Последнее: добавьте любую важную информацию о проекте, приложении, позиционировании, ограничениях, ссылках или нюансах. Если нечего добавить, отправьте `skip`.",
 ]
@@ -117,6 +118,37 @@ async def _reply_with_retry(update: Update, text: str, attempts: int = 3) -> boo
     return False
 
 
+async def _reply_video_with_retry(
+    update: Update,
+    video_path: Path,
+    *,
+    filename: str,
+    caption: str,
+    attempts: int = 3,
+) -> bool:
+    if update.message is None or not video_path.exists():
+        return False
+    for attempt in range(1, attempts + 1):
+        try:
+            with video_path.open("rb") as video_file:
+                await update.message.reply_video(
+                    video=video_file,
+                    filename=filename,
+                    caption=caption,
+                    supports_streaming=True,
+                    read_timeout=120,
+                    write_timeout=120,
+                    connect_timeout=30,
+                    pool_timeout=30,
+                )
+            return True
+        except (TimedOut, NetworkError):
+            if attempt == attempts:
+                return False
+            await asyncio.sleep(1.2 * attempt)
+    return False
+
+
 async def handle_text_step(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     state = context.user_data.get("state", APP_NAME)
     key = ANSWER_KEYS[state]
@@ -169,6 +201,7 @@ async def handle_voice_step(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    settings = get_settings()
     file_obj = None
     file_name = "demo.mp4"
     if update.message.video:
@@ -187,6 +220,13 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     temp_dir = Path(tempfile.mkdtemp(prefix="factorycontent_"))
     temp_path = temp_dir / file_name
     await telegram_file.download_to_drive(custom_path=str(temp_path))
+
+    video_metadata = VideoService().inspect(temp_path)
+    if video_metadata.duration_seconds > settings.max_demo_seconds:
+        await update.message.reply_text(
+            f"Это demo длиннее {settings.max_demo_seconds} секунд. Для MVP пришлите версию до {settings.max_demo_seconds} секунд."
+        )
+        return VIDEO
 
     context.user_data["video_temp_path"] = str(temp_path)
     context.user_data["video_file_name"] = file_name
@@ -314,26 +354,38 @@ async def finalize_submission(update: Update, context: ContextTypes.DEFAULT_TYPE
     if run_summary.status == "completed":
         summary_text = (
             f"Готово. Заявка {submission_id} обработана.\n"
-            f"Собрал пакет файлов и отправляю его сюда.\n"
+            "Отправляю итоговый ролик.\n"
             f"Warnings: {warning_count}"
         )
     else:
         error_text = run_summary.errors[0] if run_summary.errors else "unknown error"
         summary_text = (
             f"Заявка {submission_id} обработалась с ошибкой.\n"
-            f"Что успел, я все равно собрал в архив.\n"
             f"Ошибка: {error_text}"
         )
     await _reply_with_retry(update, summary_text)
 
-    bundle_path = run_summary.artifacts.get("result_bundle_zip")
-    if bundle_path:
-        with Path(bundle_path).open("rb") as bundle_file:
-            await update.message.reply_document(
-                document=bundle_file,
-                filename=f"{submission_id}-result-bundle.zip",
-                caption="Внутри raw intake, derived artifacts и logs.",
+    final_video_path = run_summary.artifacts.get("final_creative_mp4")
+    if final_video_path and Path(final_video_path).exists():
+        sent = await _reply_video_with_retry(
+            update,
+            Path(final_video_path),
+            filename=f"{submission_id}-final-creative.mp4",
+            caption="Итоговый creative MVP.",
+        )
+        if not sent:
+            await _reply_with_retry(
+                update,
+                (
+                    f"Ролик для заявки {submission_id} собран, "
+                    "но Telegram не успел принять видео. Попробуйте /start еще раз чуть позже."
+                ),
             )
+    elif run_summary.status == "completed":
+        await _reply_with_retry(
+            update,
+            f"Обработка завершилась, но итоговый mp4 для заявки {submission_id} не нашелся.",
+        )
 
     await asyncio.to_thread(storage.cleanup_old_submissions)
 

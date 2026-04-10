@@ -141,6 +141,17 @@ class EndCardBanner(BaseModel):
     layout_notes: list[str]
 
 
+class FinalCreative(BaseModel):
+    final_video: str
+    hook_image: str
+    hook_frame: str
+    hook_audio: str
+    demo_audio: str
+    end_card_audio: str
+    creative_manifest: str
+    warnings: list[str]
+
+
 class RunSummary(BaseModel):
     submission_id: str
     status: str
@@ -165,6 +176,13 @@ class SubmissionPaths(BaseModel):
     scenario_concept_json: Path
     end_card_banner_json: Path
     end_card_banner_png: Path
+    hook_image_png: Path
+    hook_frame_png: Path
+    hook_audio_mp3: Path
+    demo_audio_mp3: Path
+    end_card_audio_mp3: Path
+    final_creative_manifest_json: Path
+    final_creative_mp4: Path
     content_factory_bridge_json: Path
     scenario_prompt_txt: Path
     run_summary_json: Path
