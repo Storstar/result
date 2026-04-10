@@ -4,7 +4,8 @@ import json
 from pathlib import Path
 from typing import Optional
 
-import cv2
+import numpy as np
+from PIL import Image
 
 from ..config import get_settings
 from ..models import ClientBrief, DemoAnalysis, DetectedStep, KeyMoment
@@ -57,12 +58,15 @@ def _extract_ui_elements(texts: list[str]) -> list[str]:
 def _mean_frame_difference(frame_a_path: Optional[Path], frame_b_path: Path) -> float:
     if frame_a_path is None:
         return 0.0
-    image_a = cv2.imread(str(frame_a_path))
-    image_b = cv2.imread(str(frame_b_path))
-    if image_a is None or image_b is None:
+    try:
+        image_a = Image.open(frame_a_path).convert("RGB")
+        image_b = Image.open(frame_b_path).convert("RGB")
+    except Exception:
         return 0.0
-    resized_b = cv2.resize(image_b, (image_a.shape[1], image_a.shape[0]))
-    diff = cv2.absdiff(image_a, resized_b)
+    resized_b = image_b.resize(image_a.size)
+    array_a = np.asarray(image_a, dtype=np.int16)
+    array_b = np.asarray(resized_b, dtype=np.int16)
+    diff = np.abs(array_a - array_b)
     return float(diff.mean())
 
 
@@ -138,8 +142,7 @@ def analyze_demo_video(video_path: Path, artifacts_dir: Path, client_brief: Clie
             key_moments.append(KeyMoment(type="input", timestamp=step.timestamp_start, description="First clear input/setup moment."))
         if step.screen_type == "processing" and not any(moment.type == "magic_moment" for moment in key_moments):
             key_moments.append(
-                KeyMoment(type="magic_moment", timestamp=step.timestamp_start, description="App appears to process or generate something.")
-            )
+                KeyMoment(type="magic_moment", timestamp=step.timestamp_start, description="App appears to process or generate something."))
         if step.screen_type in {"result", "share"} and not any(moment.type == "result" for moment in key_moments):
             key_moments.append(KeyMoment(type="result", timestamp=step.timestamp_start, description="Result or payoff appears on screen."))
 

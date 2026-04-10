@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import math
+import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-import cv2
 import imageio_ffmpeg
 
 
@@ -22,17 +22,11 @@ class VideoMetadata:
 
 class VideoService:
     def inspect(self, video_path: Path) -> VideoMetadata:
-        capture = cv2.VideoCapture(str(video_path))
-        if not capture.isOpened():
-            raise RuntimeError(f"Could not open video: {video_path}")
-
-        fps = capture.get(cv2.CAP_PROP_FPS) or 0.0
-        frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-        width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
-        height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
-        capture.release()
-
-        duration_seconds = frame_count / fps if fps and frame_count else 0.0
+        stderr = self._probe_streams(video_path)
+        duration_seconds = self._parse_duration(stderr)
+        fps = self._parse_fps(stderr)
+        width, height = self._parse_dimensions(stderr)
+        frame_count = int(duration_seconds * fps) if duration_seconds > 0 and fps > 0 else 0
         has_audio = self._probe_audio_stream(video_path)
         return VideoMetadata(
             duration_seconds=duration_seconds,
@@ -46,13 +40,8 @@ class VideoService:
     def sample_frames(self, video_path: Path, output_dir: Path, interval_seconds: float, max_frames: int) -> list[tuple[float, Path]]:
         metadata = self.inspect(video_path)
         output_dir.mkdir(parents=True, exist_ok=True)
-        capture = cv2.VideoCapture(str(video_path))
-        if not capture.isOpened():
-            return []
-
         duration = metadata.duration_seconds or 0.0
         if duration <= 0:
-            capture.release()
             return []
 
         timestamps: list[float] = []
@@ -65,19 +54,9 @@ class VideoService:
 
         sampled: list[tuple[float, Path]] = []
         for index, timestamp in enumerate(timestamps):
-            frame_number = min(
-                int(math.floor(timestamp * metadata.fps)),
-                max(metadata.frame_count - 1, 0),
-            )
-            capture.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
-            success, frame = capture.read()
-            if not success:
-                continue
             frame_path = output_dir / f"frame_{index:02d}_{str(timestamp).replace('.', '_')}s.jpg"
-            cv2.imwrite(str(frame_path), frame)
-            sampled.append((timestamp, frame_path))
-
-        capture.release()
+            if self._extract_single_frame(video_path, timestamp, frame_path):
+                sampled.append((timestamp, frame_path))
         return sampled
 
     def extract_audio(self, video_path: Path, output_path: Path) -> Optional[Path]:
@@ -102,11 +81,52 @@ class VideoService:
         return output_path
 
     def _probe_audio_stream(self, video_path: Path) -> bool:
+        stderr = self._probe_streams(video_path).lower()
+        return "audio:" in stderr
+
+    def _probe_streams(self, video_path: Path) -> str:
         ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
         result = subprocess.run(
             [ffmpeg_path, "-i", str(video_path)],
             capture_output=True,
             text=True,
         )
-        stderr = result.stderr.lower()
-        return "audio:" in stderr
+        return result.stderr
+
+    def _extract_single_frame(self, video_path: Path, timestamp: float, output_path: Path) -> bool:
+        ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
+        result = subprocess.run(
+            [
+                ffmpeg_path,
+                "-y",
+                "-ss",
+                f"{max(timestamp, 0.0):.2f}",
+                "-i",
+                str(video_path),
+                "-frames:v",
+                "1",
+                str(output_path),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        return result.returncode == 0 and output_path.exists()
+
+    def _parse_duration(self, stderr: str) -> float:
+        match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", stderr)
+        if not match:
+            return 0.0
+        hours, minutes, seconds = match.groups()
+        return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+
+    def _parse_fps(self, stderr: str) -> float:
+        match = re.search(r"(\d+(?:\.\d+)?)\s*fps", stderr)
+        if not match:
+            return 0.0
+        return float(match.group(1))
+
+    def _parse_dimensions(self, stderr: str) -> tuple[int, int]:
+        match = re.search(r"Video:.*?(\d{2,5})x(\d{2,5})", stderr, re.DOTALL)
+        if not match:
+            return 0, 0
+        return int(match.group(1)), int(match.group(2))
