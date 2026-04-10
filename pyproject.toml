@@ -9,6 +9,7 @@ description = "Backend-first MVP for turning app demo recordings into structured
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
+  "google-genai>=0.8.0",
   "imageio-ffmpeg>=0.5.1",
   "numpy>=1.26.4",
   "opencv-python-headless>=4.10.0.84",
@@ -29,4 +30,3 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-

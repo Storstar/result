@@ -9,6 +9,7 @@ from PIL import Image
 
 from ..config import get_settings
 from ..models import ClientBrief, DemoAnalysis, DetectedStep, KeyMoment
+from ..services.gemini_adapter import GeminiAdapter
 from ..services.ocr import OCRAdapter
 from ..services.openai_adapter import OpenAIAdapter
 from ..services.video import VideoService
@@ -70,7 +71,46 @@ def _mean_frame_difference(frame_a_path: Optional[Path], frame_b_path: Path) -> 
     return float(diff.mean())
 
 
-def analyze_demo_video(video_path: Path, artifacts_dir: Path, client_brief: ClientBrief) -> DemoAnalysis:
+def _build_gemini_prompt(client_brief: ClientBrief) -> str:
+    return (
+        "You are analyzing a screen recording of an app demo for short-form ad production.\n"
+        "Return JSON only.\n"
+        "Describe what happens on screen step by step with timestamps.\n"
+        "Focus on visible actions only. Do not invent hidden actions.\n"
+        "Classify screens as one of: input, editor, upload, processing, result, share, other.\n"
+        "Find key moments for hook_visual, input, magic_moment, result, cta.\n"
+        "Add uncertainties when anything is ambiguous.\n"
+        "Use this JSON shape exactly:\n"
+        "{\"summary\":\"\",\"detected_steps\":[{\"step\":1,\"timestamp_start\":0.0,\"timestamp_end\":2.5,\"screen_type\":\"input\",\"user_action\":\"\",\"visible_text\":[],\"ui_elements\":[],\"notes\":\"\"}],\"key_moments\":[{\"type\":\"hook_visual\",\"timestamp\":0.0,\"description\":\"\"}],\"uncertainties\":[],\"confidence_notes\":[]}\n"
+        f"App name: {client_brief.app_name}\n"
+        f"Product summary: {client_brief.product_summary}\n"
+        f"Target audience: {client_brief.target_audience}\n"
+        f"Core pain: {client_brief.core_pain}\n"
+        f"End result: {client_brief.end_result}\n"
+        f"Creative notes: {client_brief.creative_notes}\n"
+    )
+
+
+def _validate_gemini_payload(payload: dict) -> DemoAnalysis:
+    detected_steps = payload.get("detected_steps", [])
+    candidate_voiceover_beats = [
+        f"{step.get('timestamp_start', 0.0):.2f}-{step.get('timestamp_end', 0.0):.2f}s: {step.get('screen_type', 'other')} | {step.get('user_action', '')}".strip()
+        for step in detected_steps
+    ]
+    normalized = {
+        "summary": payload.get("summary", ""),
+        "detected_steps": detected_steps,
+        "key_moments": payload.get("key_moments", []),
+        "candidate_voiceover_beats": candidate_voiceover_beats,
+        "uncertainties": payload.get("uncertainties", []),
+        "ocr_text": [],
+        "transcript": "",
+        "confidence_notes": payload.get("confidence_notes", []),
+    }
+    return DemoAnalysis.model_validate(normalized)
+
+
+def _analyze_demo_video_heuristic(video_path: Path, artifacts_dir: Path, client_brief: ClientBrief) -> DemoAnalysis:
     settings = get_settings()
     video_service = VideoService()
     ocr = OCRAdapter()
@@ -222,3 +262,33 @@ def analyze_demo_video(video_path: Path, artifacts_dir: Path, client_brief: Clie
         transcript=transcript,
         confidence_notes=confidence_notes,
     )
+
+
+def analyze_demo_video(video_path: Path, artifacts_dir: Path, client_brief: ClientBrief) -> DemoAnalysis:
+    settings = get_settings()
+    provider = settings.demo_analyzer_provider.strip().lower()
+    if provider != "gemini":
+        return _analyze_demo_video_heuristic(video_path, artifacts_dir, client_brief)
+
+    gemini = GeminiAdapter()
+    if not gemini.enabled:
+        fallback = _analyze_demo_video_heuristic(video_path, artifacts_dir, client_brief)
+        fallback.uncertainties.append("Gemini provider was selected but GEMINI_API_KEY is missing; used heuristic analyzer.")
+        return fallback
+
+    try:
+        payload = gemini.analyze_video(
+            video_path=video_path,
+            prompt=_build_gemini_prompt(client_brief),
+            logs_dir=artifacts_dir,
+        )
+        if not payload:
+            raise RuntimeError("Gemini returned no parsed payload.")
+        analysis = _validate_gemini_payload(payload)
+        analysis.confidence_notes.append("Demo analysis provider: gemini")
+        return analysis
+    except Exception as exc:
+        fallback = _analyze_demo_video_heuristic(video_path, artifacts_dir, client_brief)
+        fallback.uncertainties.append(f"Gemini analyzer failed, used heuristic fallback: {exc}")
+        fallback.confidence_notes.append("Demo analysis provider fell back from gemini to heuristic.")
+        return fallback

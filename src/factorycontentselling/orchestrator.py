@@ -22,28 +22,53 @@ class SubmissionOrchestrator:
         paths = self.storage.paths_for(submission_id)
         warnings: list[str] = []
         errors: list[str] = []
+        stage_log_path = paths.logs_dir / "pipeline_stages.log"
+        current_stage = "init"
+
+        def log_stage(message: str) -> None:
+            with stage_log_path.open("a", encoding="utf-8") as handle:
+                handle.write(f"{message}\n")
 
         try:
+            current_stage = "load_intake"
+            log_stage(f"start:{current_stage}")
             intake_record = self._load_intake(submission_id)
 
+            current_stage = "normalize_brief"
+            log_stage(f"start:{current_stage}")
             client_brief: ClientBrief = normalize_brief(intake_record)
             self.storage.write_json(paths.client_brief_json, client_brief.model_dump(mode="json"))
             warnings.extend(f"brief: missing {field}" for field in client_brief.missing_fields)
+            log_stage(f"done:{current_stage}")
 
+            current_stage = "analyze_demo_video"
+            log_stage(f"start:{current_stage}")
             demo_analysis: DemoAnalysis = analyze_demo_video(paths.demo_video, paths.logs_dir, client_brief)
             self.storage.write_json(paths.demo_analysis_json, demo_analysis.model_dump(mode="json"))
             warnings.extend(demo_analysis.uncertainties)
+            log_stage(f"done:{current_stage}")
 
+            current_stage = "build_voiceover_plan"
+            log_stage(f"start:{current_stage}")
             voiceover_plan: VoiceoverPlan = build_voiceover_plan(client_brief, demo_analysis)
             self.storage.write_json(paths.voiceover_plan_json, voiceover_plan.model_dump(mode="json"))
             warnings.extend(voiceover_plan.warnings)
+            log_stage(f"done:{current_stage}")
 
+            current_stage = "build_scenario_prompt"
+            log_stage(f"start:{current_stage}")
             scenario_prompt = build_scenario_prompt(client_brief, demo_analysis, voiceover_plan)
             self.storage.write_text(paths.scenario_prompt_txt, scenario_prompt)
+            log_stage(f"done:{current_stage}")
 
+            current_stage = "build_scenario_concept"
+            log_stage(f"start:{current_stage}")
             scenario_concept = build_scenario_concept(client_brief, demo_analysis, voiceover_plan, scenario_prompt)
             self.storage.write_json(paths.scenario_concept_json, scenario_concept.model_dump(mode="json"))
+            log_stage(f"done:{current_stage}")
 
+            current_stage = "build_end_card_banner"
+            log_stage(f"start:{current_stage}")
             icon_path = paths.app_icon if paths.app_icon.exists() else None
             end_card_banner: EndCardBanner | None = build_end_card_banner(
                 client_brief.app_name,
@@ -55,10 +80,16 @@ class SubmissionOrchestrator:
                 self.storage.write_json(paths.end_card_banner_json, end_card_banner.model_dump(mode="json"))
             else:
                 warnings.append("end_card_skipped: no app icon uploaded.")
+            log_stage(f"done:{current_stage}")
 
+            current_stage = "build_final_video"
+            log_stage(f"start:{current_stage}")
             final_creative: FinalCreative = build_final_video(paths, scenario_concept)
             warnings.extend(final_creative.warnings)
+            log_stage(f"done:{current_stage}")
 
+            current_stage = "write_bridge"
+            log_stage(f"start:{current_stage}")
             content_factory_bridge = {
                 "mode": "external_demo_video",
                 "concept_source": str(paths.scenario_concept_json),
@@ -74,10 +105,12 @@ class SubmissionOrchestrator:
                 ],
             }
             self.storage.write_json(paths.content_factory_bridge_json, content_factory_bridge)
+            log_stage(f"done:{current_stage}")
             status = "completed"
         except Exception as exc:
             status = "failed"
-            errors.append(str(exc))
+            errors.append(f"{current_stage}: {exc}")
+            log_stage(f"failed:{current_stage}:{type(exc).__name__}:{exc}")
             traceback_path = paths.logs_dir / "pipeline_error.log"
             traceback_path.write_text(traceback.format_exc(), encoding="utf-8")
 
